@@ -34,7 +34,7 @@ The autoregressive generative modeling training and evaluation code are in `auto
 ## Citation
 
 If you find this code useful, please cite our work:
-``
+```
 @inproceedings{shi2023sequence,
   title={Sequence Modeling with Multiresolution Convolutional Memory},
   author={Shi, Jiaxin and Wang, Ke Alexander and Fox, Emily B},
