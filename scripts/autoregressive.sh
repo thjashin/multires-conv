@@ -1,0 +1,1 @@
+CUDA_VISIBLE_DEVICES=0,1,2,3 python autoregressive.py --layer=mutlires --d_model=512 --lr=0.001 --dropout=0.1 --n_layers=48 --batch_size=64 --port=42669 --tree_select=fading --indep_res_init --epochs=250 --kernel_size=4
