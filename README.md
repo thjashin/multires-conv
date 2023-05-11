@@ -25,11 +25,11 @@ For Long ListOps and PTB-XL experiments, please follow the comments in `dataload
 ## Training
 
 We provide multi-GPU training code for all experiments (PTB-XL coming soon!). 
-For example, see
+For example, 
 ```
 bash scripts/seq_cifar.sh
 ```
-for the command line used to run the sequential CIFAR-10 classification experiment.
+will run the sequential CIFAR-10 classification experiment with 2 GPUs using the settings in the paper.
 The main file for classification experiments are `classification.py`.
 The autoregressive generative modeling training and evaluation code are in `autoregressive.py` and `autogressive_eval.py`. 
 
