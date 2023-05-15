@@ -59,7 +59,7 @@ class DefaultCollateMixin:
                 # shared memory tensor to avoid an extra copy
                 numel = sum(x.numel() for x in batch)
                 storage = elem.storage()._new_shared(numel)
-                out = elem.new(storage)
+                out = elem.new(storage).resize_(len(batch), *list(elem.size()))
             x = torch.stack(batch, dim=0, out=out)
 
             # Insert custom functionality into the collate_fn
