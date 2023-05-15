@@ -40,7 +40,8 @@ class PTBXL(SequenceDataset):
             raise FileNotFoundError(
                 f"""
                 Data directory {str(self.data_dir)} not found.
-                Please download the data from https://physionet.org/content/ptb-xl/1.0.3/.
+                Please download and unzip the data from https://physionet.org/content/ptb-xl/1.0.3/.
+                Then place the contents in a directory caled `ptbxl/` (corresponding to self._name_ of this class).
                 """
             )
 
