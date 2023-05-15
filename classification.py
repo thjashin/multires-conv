@@ -29,6 +29,8 @@ from utils import (
 )
 
 from dataloaders.lra import ListOps
+from dataloaders.ptbxl import PTBXL
+from sklearn.metrics import roc_auc_score
 
 
 def masked_meanpool(x, lengths):
@@ -168,6 +170,8 @@ def train(device, epoch, trainloader, model, optimizer, scheduler, criterion):
     pbar = enumerate(trainloader)
     if device == 0:
         pbar = tqdm(pbar)
+    true_targets = []
+    pred_targets = []
     for batch_idx, batch in pbar:
         inputs, targets, *z = batch
         if len(z) == 0:
@@ -187,16 +191,40 @@ def train(device, epoch, trainloader, model, optimizer, scheduler, criterion):
         scheduler.step()
 
         train_loss += loss.item()
-        _, predicted = outputs.max(1)
-        total += targets.size(0)
-        correct += predicted.eq(targets).sum().item()
-        acc = 100 * correct / total
+        if isinstance(criterion, nn.CrossEntropyLoss):
+            _, predicted = outputs.max(1)  # multiclass classification
+            total += targets.size(0)
+            correct_batch = predicted.eq(targets).sum().item()
+            correct += correct_batch
+        elif isinstance(criterion, nn.BCEWithLogitsLoss):
+            # NOTE: this won't collect all targets/pred_targets from every device when using DDP, since each process will only see a subset of the data
+            true_targets.append(targets.to("cpu", non_blocking=True).numpy())
+            pred_targets.append(outputs.detach().to("cpu", non_blocking=True).numpy())
+        else:
+            raise NotImplementedError
         if device == 0:
-            pbar.set_description(
-                'Epoch {} | Batch Idx: ({}/{}) | Loss: {:.3f} | Acc: {:.3f}%% | LR: {:.5f}'
-                .format(epoch, batch_idx, len(trainloader), train_loss / (batch_idx + 1), acc, scheduler.get_lr()[0])
-            )
-    return train_loss / n_iters, 100. * correct / total
+            if isinstance(criterion, nn.CrossEntropyLoss):
+                batch_acc = 100.0 * correct / total
+                # show running average loss per batch in this epoch
+                pbar.set_description(
+                    'Epoch {} | Batch Idx: ({}/{}) | Loss: {:.3f} | Acc: {:.3f}%% | LR: {:.5f}'
+                    .format(epoch, batch_idx, len(trainloader), train_loss / (batch_idx + 1), batch_acc, scheduler.get_lr()[0])
+                )
+            else:
+                pbar.set_description(
+                    "Epoch {} | Batch Idx: ({}/{}) | Loss: {:.3f} | LR: {:.5f}"
+                    .format(epoch, batch_idx, len(trainloader), train_loss / ( batch_idx + 1), scheduler.get_lr()[0])
+                )
+    if isinstance(criterion, nn.CrossEntropyLoss):
+        acc = 100.0 * correct / total
+    elif isinstance(criterion, nn.BCEWithLogitsLoss):
+        true_targets = np.concatenate(true_targets)
+        pred_targets = np.concatenate(pred_targets)
+        auroc = roc_auc_score(true_targets, pred_targets, average="macro")
+        acc = auroc  # treat auc as accuracy
+    else:
+        raise NotImplementedError
+    return train_loss / n_iters, acc 
 
 
 def eval(device, epoch, dataloader, model, criterion):
@@ -204,6 +232,8 @@ def eval(device, epoch, dataloader, model, criterion):
     eval_loss = 0
     correct = 0
     total = 0
+    true_targets = []
+    pred_targets = []
     with torch.no_grad():
         pbar = tqdm(enumerate(dataloader))
         for batch_idx, batch in pbar:
@@ -221,16 +251,37 @@ def eval(device, epoch, dataloader, model, criterion):
             loss = criterion(outputs, targets)
 
             eval_loss += loss.item()
-            _, predicted = outputs.max(1)
-            total += targets.size(0)
-            correct += predicted.eq(targets).sum().item()
+            if isinstance(criterion, nn.CrossEntropyLoss):
+                _, predicted = outputs.max(1)
+                total += targets.size(0)
+                correct += predicted.eq(targets).sum().item()
 
-            pbar.set_description(
-                'Batch Idx: ({}/{}) | Loss: {:.3f} | Acc: {:.3f}%%'
-                .format(batch_idx, len(dataloader), eval_loss / (batch_idx + 1), 100. * correct / total)
-            )
+                pbar.set_description(
+                    "Batch Idx: ({}/{}) | Loss: {:.3f} | Acc: {:.3f}%%"
+                    .format(batch_idx, len(dataloader), eval_loss / (batch_idx + 1), 100.0 * correct / total)
+                )
+            elif isinstance(criterion, nn.BCEWithLogitsLoss):
+                true_targets.append(targets.to("cpu", non_blocking=True).numpy())
+                pred_targets.append(
+                    outputs.detach().to("cpu", non_blocking=True).numpy()
+                )
+                pbar.set_description(
+                    "Batch Idx: ({}/{}) | Loss: {:.3f}"
+                    .format(batch_idx, len(dataloader), eval_loss / (batch_idx + 1))
+                )
+            else:
+                raise NotImplementedError
 
-    return 100. * correct / total
+    if isinstance(criterion, nn.CrossEntropyLoss):
+        acc = 100.0 * correct / total
+    elif isinstance(criterion, nn.BCEWithLogitsLoss):
+        true_targets = np.concatenate(true_targets)
+        pred_targets = np.concatenate(pred_targets)
+        auroc = roc_auc_score(true_targets, pred_targets, average="macro")
+        acc = auroc  # treat auc as accuracy
+    else:
+        raise NotImplementedError
+    return acc 
 
 
 def image2seq(x):
@@ -291,6 +342,24 @@ def main(rank, world_size, args):
         n_tokens = listops.n_tokens
         max_length = listops.l_max
 
+    elif args.dataset == "ptbxl":
+        ptbxl = PTBXL(args.dataset, data_dir="./data", task=args.task)
+        ptbxl.setup()
+        trainloader = ptbxl.train_dataloader(
+            batch_size=per_device_batch_size,
+            num_workers=args.num_workers,
+            shuffle=False,
+            pin_memory=True,
+            sampler=DistributedSampler(ptbxl.dataset_train),
+        )
+        valloader = ptbxl.val_dataloader(batch_size=args.batch_size, drop_last=False, shuffle=False, num_workers=args.num_workers)
+        testloader = ptbxl.test_dataloader(batch_size=args.batch_size, drop_last=False, shuffle=False, num_workers=args.num_workers)
+        d_input = ptbxl.d_input
+        d_output = ptbxl.d_output
+        max_length = ptbxl.L
+        encoder = "linear"
+        n_tokens = None
+
     else: 
         raise NotImplementedError()
 
@@ -320,7 +389,10 @@ def main(rank, world_size, args):
         model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
     model = DDP(model, device_ids=[rank])
 
-    criterion = nn.CrossEntropyLoss()
+    if args.dataset == "ptbxl":
+        criterion = nn.BCEWithLogitsLoss()  # ptbxl has multiclass labels
+    else:
+        criterion = nn.CrossEntropyLoss()
     optimizer, scheduler = setup_optimizer(
         model, lr=args.lr, weight_decay=args.weight_decay, epochs=args.epochs, 
         iters_per_epoch=len(trainloader), warmup=args.warmup,
@@ -392,7 +464,21 @@ if __name__ == "__main__":
     parser.add_argument('--epochs', default=100, type=int, help='Training epochs')
     parser.add_argument('--warmup', default=0, type=int, help='Number of warmup epochs')
     # Data
-    parser.add_argument('--dataset', default='cifar10', choices=['cifar10', 'listops'], type=str)
+    parser.add_argument('--dataset', default='cifar10', choices=['cifar10', 'listops', 'ptbxl'], type=str, help='Dataset')
+    parser.add_argument(
+        "--task",
+        default="n/a",
+        choices=[
+            "all",
+            "diagnostic",
+            "subdiagnostic",
+            "superdiagnostic",
+            "form",
+            "rhythm",
+        ],
+        type=str,
+        help="Task (argument specific to the PTB-XL dataset)",
+    )
     parser.add_argument('--num_workers', default=4, type=int, 
                         help='Number of workers for dataloader')
     parser.add_argument('--batch_size', default=64, type=int, help='Total batch size')
