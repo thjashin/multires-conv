@@ -9,7 +9,6 @@ wandb
 torchvision
 torchaudio
 torchtext
-transformers
 einops
 opt_einsum
 datasets

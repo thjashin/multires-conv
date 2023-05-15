@@ -15,7 +15,6 @@ from torch.distributed import destroy_process_group
 torch.backends.cuda.matmul.allow_tf32 = True
 import torchvision
 import torchvision.transforms as transforms
-import transformers
 import numpy as np
 
 from layers.multireslayer import MultiresLayer
@@ -26,6 +25,7 @@ from utils import (
     apply_norm,
     ddp_setup,
     split_train_val,
+    get_cosine_schedule_with_warmup
 )
 
 from dataloaders.lra import ListOps
@@ -154,7 +154,7 @@ def setup_optimizer(model, lr, weight_decay, epochs, iters_per_epoch, warmup):
     total_steps = epochs * iters_per_epoch
     if warmup > 0:
         warmup_steps = warmup * iters_per_epoch
-        scheduler = transformers.get_cosine_schedule_with_warmup(optimizer, warmup_steps, total_steps)
+        scheduler = get_cosine_schedule_with_warmup(optimizer, warmup_steps, total_steps)
     else:
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, total_steps)
     return optimizer, scheduler
