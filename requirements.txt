@@ -2,16 +2,8 @@ tqdm
 numpy
 scipy
 pandas
-matplotlib
-seaborn
 torch
-wandb
 torchvision
-torchaudio
-torchtext
 einops
-opt_einsum
-datasets
-PyWavelets
 wfdb
 scikit-learn
