@@ -41,6 +41,6 @@ If you find this code useful, please cite our work:
   title={Sequence Modeling with Multiresolution Convolutional Memory},
   author={Shi, Jiaxin and Wang, Ke Alexander and Fox, Emily B},
   booktitle={International Conference on Machine Learning},
-  year={2022}
+  year={2023}
 }
 ```
