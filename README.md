@@ -24,7 +24,7 @@ For Long ListOps and PTB-XL experiments, please follow the comments in `dataload
 
 ## Training
 
-We provide multi-GPU training code for all experiments (PTB-XL coming soon!). 
+We provide multi-GPU training code for all experiments. 
 For example, 
 ```
 bash scripts/seq_cifar.sh
@@ -39,7 +39,7 @@ If you find this code useful, please cite our work:
 ```
 @inproceedings{shi2023sequence,
   title={Sequence Modeling with Multiresolution Convolutional Memory},
-  author={Shi, Jiaxin and Wang, Ke Alexander and Fox, Emily B},
+  author={Shi, Jiaxin and Wang, Ke Alexander and Fox, Emily B.},
   booktitle={International Conference on Machine Learning},
   year={2023}
 }
