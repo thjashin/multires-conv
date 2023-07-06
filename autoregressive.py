@@ -85,7 +85,6 @@ class MultiresAR(nn.Module):
                     dropout=dropout,
                     memory_size=d_mem,
                     indep_res_init=indep_res_init,
-                    mixing=False
                 )
             else:
                 raise NotImplementedError()
@@ -127,7 +126,7 @@ class MultiresAR(nn.Module):
             x = apply_norm(x, norm, self.batchnorm)
 
         # out: [bs, d_output, seq_len]
-        out = self.output_mapping(x)
+        out = self.decoder(x)
         return out
 
 
