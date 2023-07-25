@@ -13,6 +13,7 @@ from torch.distributed import destroy_process_group
 torch.backends.cuda.matmul.allow_tf32 = True
 import torchvision
 import torchvision.transforms as transforms
+from torchvision.utils import save_image
 import numpy as np
 
 from autoregressive import MultiresAR
@@ -21,6 +22,7 @@ from utils import (
     ddp_setup, 
     count_parameters, 
     discretized_mix_logistic_loss, 
+    sample_from_discretized_mix_logistic,
     DistributedSamplerNoDuplicate,
 )
 
@@ -54,6 +56,22 @@ def eval(device, dataloader, model, criterion, data_shape):
     return eval_loss, total
     # return eval_loss / (total * np.prod(data_shape) * np.log(2.))
 
+
+def sample(device, model, sample_size, data_shape):
+    model.eval()
+    with torch.no_grad():
+        samples = torch.zeros(sample_size, data_shape[0], data_shape[1] * data_shape[2]).to(device)
+        for i in range(data_shape[-2]):
+            for j in tqdm(range(data_shape[-1])):
+                pixel_loc = i * data_shape[-1] + j
+                out = model(samples)
+                out = sample_from_discretized_mix_logistic(out.reshape(*out.shape[:2], *data_shape[1:]), model.module.nr_logistic_mix)
+                samples[:, :, pixel_loc] = out[:, :, i, j]
+    return inv_rescaling(samples.reshape(-1, *data_shape))
+
+
+def inv_rescaling(x):
+    return 0.5 * x + 0.5
 
 def rescaling(x):
     return (x - 0.5) * 2.
@@ -141,6 +159,11 @@ def main(rank, world_size, args):
         test_loss1 = metrics[0].item() / (metrics[1].item() * np.prod(data_shape) * np.log(2.))
         logger.info("{}, {}".format(metrics[0].item(), metrics[1].item()))
         logger.info("multi gpu result, epoch {}: test bits per dim={}".format(epoch, test_loss1))
+
+        logger.info("Start saving samples...")
+        samples = sample(rank, model, 64, data_shape)
+        save_image(samples, '{}/images.png'.format(log_dir), nrow=8, padding=0)
+
     destroy_process_group()
 
 
