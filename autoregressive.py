@@ -57,6 +57,7 @@ class MultiresAR(nn.Module):
         self.batchnorm = batchnorm
         self.max_length = max_length
         self.depth = depth
+        self.nr_logistic_mix = nr_logistic_mix
         if encoder == "linear":
             self.encoder = nn.Conv1d(d_input, d_model, 1)
         elif encoder == "embedding":
